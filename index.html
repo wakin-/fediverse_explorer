@@ -2,111 +2,231 @@
 <meta charset="utf-8">
 <style>
 
-.links line {
-  stroke: #999;
-  stroke-opacity: 0.6;
-}
-
-.nodes circle {
-  stroke: #fff;
-  stroke-width: 1.5px;
+svg {
+  background-color: white;
 }
 
 </style>
 <svg width="960" height="600"></svg>
+<p id="start-url"></p>
+<p id="target-url"></p>
+<p>操作</p>
+<ul>
+  <li>onMouse：GET /api/v1/instance （通信試行）</li>
+  <li>click：GET /api/v1/instance/peers</li>
+</ul>
+<p>ノード色</p>
+<ul>
+  <li>青：未試行</li>
+  <li>オレンジ：v2.1.2以降</li>
+  <li>緑：v2.1.2以前 or Mastodon以外</li>
+  <li>赤：通信不能</li>
+</ul>
 <script src="https://d3js.org/d3.v4.min.js"></script>
 <script>
-
-var svg = d3.select("svg"),
-    width = +svg.attr("width"),
-    height = +svg.attr("height");
-
-var color = d3.scaleOrdinal(d3.schemeCategory20);
-
-var simulation = d3.forceSimulation()
-    .force("link", d3.forceLink().id(function(d) { return d.id; }))
-    .force("charge", d3.forceManyBody())
-    .force("center", d3.forceCenter(width / 2, height / 2));
-
-d3.json("https://biwakodon.com/api/v1/instance/peers", function(error, graph) {
-  if (error) throw error;
-
-  links = graph.map(function(instance) {
-    return {
-      source: 'biwakodon.com',
-      target: instance
+  function httpRequest(url, method, header, data, callback, error) {
+    var xhr = new XMLHttpRequest();
+    xhr.onreadystatechange = function() {
+      if (this.readyState == 4) {
+        if (this.status == 200) {
+          callback(this.responseText);
+        } else {
+          error(this.responseText);
+        }
+      }
     }
-  });
-
-  var link = svg.append("g")
-      .attr("class", "links")
-    .selectAll("line")
-    .data(links)
-    .enter().append("line")
-      .attr("stroke-width", function(d) { return Math.sqrt(d.value); });
-
-  nodes = graph.map(function(instance) {
-    return {
-      id: instance,
-      group: 1
-    }
-  });
-
-  nodes.push({
-      id: 'biwakodon.com',
-      group: 1
-  });
-
-  var node = svg.append("g")
-      .attr("class", "nodes")
-    .selectAll("circle")
-    .data(nodes)
-    .enter().append("circle")
-      .attr("r", 5)
-      .attr("fill", function(d) { return color(d.group); })
-      .call(d3.drag()
-          .on("start", dragstarted)
-          .on("drag", dragged)
-          .on("end", dragended));
-
-  node.append("title")
-      .text(function(d) { return d.id; });
-
-  simulation
-      .nodes(nodes)
-      .on("tick", ticked);
-
-  simulation.force("link")
-      .links(links);
-
-  function ticked() {
-    link
-        .attr("x1", function(d) { return d.source.x; })
-        .attr("y1", function(d) { return d.source.y; })
-        .attr("x2", function(d) { return d.target.x; })
-        .attr("y2", function(d) { return d.target.y; });
-
-    node
-        .attr("cx", function(d) { return d.x; })
-        .attr("cy", function(d) { return d.y; });
+    xhr.open(method, url, true);
+//    for (key in header) {
+//      xhr.setRequestHeader(key, header[key]);            
+//    }
+    xhr.send(JSON.stringify(data));
   }
-});
 
-function dragstarted(d) {
-  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
-  d.fx = d.x;
-  d.fy = d.y;
-}
+  function get_query(parameter_name, rule, def_val) {
+    def_val = typeof(def_val)=="undefined"?null:def_val;
+    var ret = def_val, tmp = [];
+    location.search.substr(1).split("&").forEach(function (item) {
+      tmp = item.split("=");
+      try {
+        param = decodeURIComponent(tmp[1]);
+      }  catch(e) {
+        param = "";
+      }
+      if (tmp[0] === parameter_name && (typeof(rule) == "undefined" || rule == null || param.match(rule))) {
+        ret = param;
+      }
+    });
+    return ret;
+  }
+  var svg = d3.select("svg")
+    .call(d3.zoom().scaleExtent([1 / 4, 4]).on("zoom", rescale)),
+    width = +svg.attr("width"),
+    height = +svg.attr("height"),
+    color = d3.scaleOrdinal(d3.schemeCategory10),
+    nodes = [],
+    links = [],
+    start_domain = get_query("domain", /^[0-9a-zA-Z\-\.]+\.[0-9a-zA-Z\-]+$/gi, "biwakodon.com"),
+    start_domain_target_arr = [],
+    chain_domain = "",
+    domain = ""
+  
+  var simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink().id((d) => ( d.id )))
+    .force("charge", d3.forceManyBody())
+    .force("center", d3.forceCenter(width / 2, height / 2))
+//    .force("x", d3.forceX())
+//    .force("y", d3.forceY())
+//    .alphaTarget(0)
+  
+  var g = svg.append("g"),
+    link = g.append("g").attr("stroke", "#999").attr("stroke-width", 1.5).selectAll(".link"),
+    node = g.append("g").attr("stroke", "#fff").attr("stroke-width", 1.5).selectAll(".node");
 
-function dragged(d) {
-  d.fx = d3.event.x;
-  d.fy = d3.event.y;
-}
+  function initialize() {
+    domain = start_domain
+    document.querySelector("#start-url").innerHTML = "基準インスタンス：<a href='https://"+encodeURIComponent(domain)+"/about/more' target='_blank'>"+encodeURIComponent(domain)+"</a>"
+    d3.json("https://"+domain+"/api/v1/instance/peers", setup);
+  }
 
-function dragended(d) {
-  if (!d3.event.active) simulation.alphaTarget(0);
-  d.fx = null;
-  d.fy = null;
-}
+  function setup(error, data) {
+    if (error) throw error;
 
+    links = data.map((instance) => ({
+      source: domain,
+      target: instance
+    }))
+
+    nodes = data.map((instance) => ({
+      id: instance,
+      group: 1,
+      value: 5,
+      label: ""
+    }))
+    nodes.some(function(v, i) {
+      if (v.id == start_domain) nodes.splice(i, 1)
+    })
+
+    if (chain_domain!="") {
+      nodes.push({
+        id: chain_domain,
+        group: 2,
+        value: 8,
+        label: chain_domain
+      })
+    }
+    nodes.push({
+      id: start_domain,
+      group: 2,
+      value: 8,
+      label: start_domain
+    })
+
+    if (start_domain_target_arr.length==0) {
+      start_domain_target_arr = links.map((_link) => ( _link.target ))
+    } else {
+      nodes.forEach(function(instance) {
+        if (start_domain_target_arr.indexOf(instance.id)>=0) {
+          links.push({
+            source: start_domain,
+            target: instance.id
+          })
+        }
+      })
+    }
+
+    // Apply the general update pattern to the nodes.
+    node = node.data(nodes, (d) => ( d.id ))
+    node.exit().remove()
+    node = node.enter()
+      .append("circle")
+        .attr("class", "node")
+        .attr("fill", (d) => ( color(d.group) ))
+        .attr("r", (d) => ( d.value ))
+        .merge(node)
+        .on("mouseover", mouseover)
+        .on("click", clicked)
+
+    // Apply the general update pattern to the links.
+    link = link.data(links, (d) => ( d.source.id + "-" + d.target.id ))
+    link.exit().remove()
+    link = link.enter()
+      .append("line")
+      .attr("class", "link")
+      .merge(link)
+  
+    // Update and restart the simulation.
+    simulation.nodes(nodes).on("tick", ticked)
+    simulation.force("link").links(links)
+    simulation.alpha(1).restart()
+  }
+  
+  function ticked() {
+    node.attr("cx", function(d) { return d.x; })
+      .attr("cy", function(d) { return d.y; })
+  
+    link.attr("x1", function(d) { return d.source.x; })
+      .attr("y1", function(d) { return d.source.y; })
+      .attr("x2", function(d) { return d.target.x; })
+      .attr("y2", function(d) { return d.target.y; });
+  }
+
+  function mouseover(d)  {
+    _domain = d.id
+    httpRequest("https://"+_domain+"/api/v1/instance", "GET", {}, {},
+      function(responseText) {
+        let arr = JSON.parse(responseText)
+        if (arr.version) {
+          versions = arr.version.split('.')
+          if (check_version(versions, [2,1,2])) {
+            d.group = 2
+          } else {
+            d.group = 4
+          }
+        }
+        d3.select(this).attr("fill", (d) => ( color(d.group) ))
+      }.bind(this),
+      function(status) {
+        d.group = 3
+        d3.select(this).attr("fill", (d) => ( color(d.group) ))
+      }.bind(this)
+    )    
+  }
+
+  function clicked(d) {
+    if (d.group == 2) {
+      domain = d.id
+      chain_domain = domain
+      d.value = 8
+      d3.select(this).attr("r", (d) => ( d.value ))
+      document.querySelector("#target-url").innerHTML = "比較インスタンス：<a href='https://"+encodeURIComponent(domain)+"/about/more' target='_blank'>"+encodeURIComponent(domain)+"</a><p><a href='?domain="+encodeURIComponent(domain)+"' >基準インスタンスとして開き直す</a></p>"
+      d3.json("https://"+domain+"/api/v1/instance/peers", setup);
+    }
+  }
+
+  function dblclicked(d) {
+    window.open("https://"+d.id)
+  }
+
+  function check_version(arr1, arr2) {
+    if (arr1.length < arr2.length) return false
+    let flg = true
+    for (i=0; i<arr2.length; i++) {
+      if (Number(arr1[i]) > Number(arr2[i])) {
+        flg = true
+        break
+      }
+      if (Number(arr1[i]) < Number(arr2[i])) {
+        flg = false
+        break
+      }
+    }
+    return flg
+  }
+
+  function rescale() {
+    d3.select('svg').select('g')
+      .attr("transform", d3.event.transform);
+  }
+
+  initialize();
 </script>
