@@ -3,4 +3,4 @@ Mastodon v2.1.2から追加された /api/v1/instance/peers を使ってネッ�
 
 ## ToDo
 
-- 基準インスタンス、比較インスタンスにlabel付け
+- ラベリング
