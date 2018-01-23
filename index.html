@@ -4,11 +4,17 @@
 <style>
 
 svg {
-  background-color: white;
+  background-color: black;
+}
+
+.label text {
+  pointer-events: none;
 }
 
 </style>
 <svg width="960" height="600"></svg>
+<p>クリックしていく度に既知のインスタンスは省かれていきます。</p>
+<p id="onmounse-text">未選択</p>
 <p id="start-url"></p>
 <p id="target-url"></p>
 <p>操作</p>
@@ -66,48 +72,54 @@ svg {
     color = d3.scaleOrdinal(d3.schemeCategory10),
     nodes = [],
     links = [],
+    labels = [],
     chain_node_ids = [],
-    chain_links = [],
+    chain_node_links = [],
     start_domain = get_query("domain", /^[0-9a-zA-Z\-\.]+\.[0-9a-zA-Z\-]+$/gi, "biwakodon.com"),
-    start_domain_target_arr = [],
-    chain_domain = "",
-    domain = ""
+    chain_node_target_arr = {},
+    domain = "",
+    before_domain = "",
+    check_domain = ""
   
   var simulation = d3.forceSimulation(nodes)
     .force("link", d3.forceLink().id((d) => ( d.id )))
-    .force("charge", d3.forceManyBody())
+    .force("charge", d3.forceManyBody().strength(-50))
     .force("center", d3.forceCenter(width / 2, height / 2))
 //    .force("x", d3.forceX())
 //    .force("y", d3.forceY())
 //    .alphaTarget(0)
   
   var g = svg.append("g"),
-    link = g.append("g").attr("stroke", "#999").attr("stroke-width", 1.5).selectAll(".link"),
-    node = g.append("g").attr("stroke", "#fff").attr("stroke-width", 1.5).selectAll(".node");
+    link = g.append("g").attr("stroke", "#999").attr("stroke-width", 1.5).attr("class", "link").selectAll("line"),
+    node = g.append("g").attr("stroke", "#fff").attr("stroke-width", 1.5).attr("class", "node").selectAll("circle"),
+    label = g.append("g").attr("font-size", "48px").attr("stroke", "white").attr("stroke-width", 1.5).attr("class", "label").selectAll("text");
 
   function initialize() {
     domain = start_domain
-    chain_node_ids.push(domain)
-    document.querySelector("#start-url").innerHTML = "基準インスタンス：<a href='https://"+encodeURIComponent(domain)+"/about/more' target='_blank'>"+encodeURIComponent(domain)+"</a>"
+    document.querySelector("#start-url").innerHTML = "基準インスタンス：<a href='https://"+encodeURIComponent(domain)+"/about/more' target='_blank'>"+encodeURIComponent(domain)+"/about/more</a>"
     d3.json("https://"+domain+"/api/v1/instance/peers", setup);
   }
 
   function setup(error, data) {
-    if (error) throw error;
+    if (error) {
+      alert("情報の取得に失敗しました");
+      d3.select("#"+check_domain.replace(/\./g, '-')).attr("fill", color(4))
+      return false;
+    }
 
-    links = data.filter(function(instance) {
-      for (var i=0; i< chain_links.length; i++) {
-        let source = typeof(chain_links[i].source) == 'string' ? chain_links[i].source : chain_links[i].source.id
-        let target = typeof(chain_links[i].target) == 'string' ? chain_links[i].target : chain_links[i].target.id
-        if (domain == source && instance == target || domain == target && instance == source) {
-          return false
-        }
-      }
-      return true
-    }).map((instance) => ({
-      source: domain,
-      target: instance
-    }))
+    if (check_domain != "") {
+      d3.select("#"+check_domain.replace(/\./g, '-')).attr("r", 8)
+      document.querySelector("#target-url").innerHTML = "比較インスタンス：<a href='https://"+encodeURIComponent(check_domain)+"/about/more' target='_blank'>"+encodeURIComponent(check_domain)+"/about/more</a><p>　→<a href='?domain="+encodeURIComponent(check_domain)+"' >基準インスタンスとして開き直す</a></p>"
+      domain = check_domain
+    }
+
+    chain_node_ids.push(domain)
+    if (before_domain!="") {
+      chain_node_links.push({
+        source: before_domain,
+        target: domain
+      })
+    } 
 
     nodes = data.filter(function(instance) {
       return chain_node_ids.indexOf(instance) == -1
@@ -117,21 +129,67 @@ svg {
       value: 5
     }))
 
+    links = data.filter(function(instance) {
+      for (let i=0; i< chain_node_ids.length; i++) {
+        let chain_node = chain_node_ids[i]
+        if (instance == chain_node) {
+          return false
+        }
+      }
+      return true
+    }).map((instance) => ({
+      source: domain,
+      target: instance
+    }))
+
+    nodes_id = nodes.map((instance) => (instance.id))
+
+    links = links.filter(function(_link) {
+      for (chain_node in chain_node_target_arr) {
+        if (chain_node_target_arr[chain_node].indexOf(_link.target) >= 0) {
+          return false
+        }
+      }
+      return true
+    })
+
+    nodes = nodes.filter(function(instance) {
+      for (chain_node in chain_node_target_arr) {
+        if (chain_node_target_arr[chain_node].indexOf(instance.id) >= 0) {
+          return false
+        }
+      }
+      return true      
+    })
+
+    chain_node_target_arr[domain] = links.map((_link) => (
+      _link.target
+    ))
+
+
     chain_node_ids.forEach(function(instance) {
       nodes.push({
         id: instance,
         group: 2,
-        value: 8
+        value: 8,
+        label: instance
       })
     })
 
-    chain_links.forEach(function(_link) {
-      let source = typeof(_link.source) == 'string' ? _link.source : _link.source.id
-      let target = typeof(_link.target) == 'string' ? _link.target : _link.target.id
-      links.push({
-        source: source,
-        target: target
-      })
+    labels = []
+    nodes.forEach(function(_node) {
+      if (chain_node_ids.indexOf(_node.id) != -1) {
+        labels.push(_node)
+      }
+    })
+
+    chain_node_ids.forEach(function(chain_node, index) {
+      if (index>0) {
+        links.push({
+          source: chain_node_ids[index-1],
+          target: chain_node
+        })
+      }
     })
 
     // Apply the general update pattern to the nodes.
@@ -139,20 +197,31 @@ svg {
     node.exit().remove()
     node = node.enter()
       .append("circle")
-        .attr("class", "node")
         .attr("fill", (d) => ( color(d.group) ))
         .attr("r", (d) => ( d.value ))
+        .attr("id", (d) => ( d.id.replace(/\./g, '-') ))
         .merge(node)
         .on("mouseover", mouseover)
+        .on("mouseout", mouseout)
         .on("click", clicked)
+        .call(d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended));
 
     // Apply the general update pattern to the links.
     link = link.data(links, (d) => ( d.source.id + "-" + d.target.id ))
     link.exit().remove()
     link = link.enter()
       .append("line")
-      .attr("class", "link")
       .merge(link)
+
+    label = label.data(labels, (d) => (d.id))
+    label.exit().remove()
+    label = label.enter()
+      .append("text")
+        .text((d) => (d.id))
+        .merge(label)
   
     // Update and restart the simulation.
     simulation.nodes(nodes).on("tick", ticked)
@@ -168,9 +237,14 @@ svg {
       .attr("y1", function(d) { return d.source.y; })
       .attr("x2", function(d) { return d.target.x; })
       .attr("y2", function(d) { return d.target.y; });
+    
+    label.attr("x", function(d) { return d.x; })
+      .attr("y", function(d) { return d.y; })
+
   }
 
   function mouseover(d)  {
+    document.querySelector("#onmounse-text").innerHTML = "onMouse中→"+encodeURIComponent(d.id)
     if (d.group!=1) return
     _domain = d.id
     httpRequest("https://"+_domain+"/api/v1/instance", "GET", {}, {},
@@ -190,23 +264,17 @@ svg {
         d.group = 4
         d3.select(this).attr("fill", (d) => ( color(d.group) ))
       }.bind(this)
-    )    
+    )
+  }
+
+  function mouseout(d) {
+    document.querySelector("#onmounse-text").innerHTML = "未選択"
   }
 
   function clicked(d) {
     if (d.group == 2 && d.value == 5) {
-      _domain = domain
-      domain = d.id
-      chain_domain = domain
-      chain_node_ids.push(domain)
-      chain_links.push({
-        source: _domain,
-        target: domain
-      })
-      d.value = 8
-      d3.select(this).attr("r", (d) => ( d.value ))
-      document.querySelector("#target-url").innerHTML = "比較インスタンス：<a href='https://"+encodeURIComponent(domain)+"/about/more' target='_blank'>"+encodeURIComponent(domain)+"</a><p><a href='?domain="+encodeURIComponent(domain)+"' >基準インスタンスとして開き直す</a></p>"
-      d3.json("https://"+domain+"/api/v1/instance/peers", setup);
+      check_domain = d.id
+      d3.json("https://"+check_domain+"/api/v1/instance/peers", setup);
     }
   }
 
@@ -233,6 +301,23 @@ svg {
   function rescale() {
     d3.select('svg').select('g')
       .attr("transform", d3.event.transform);
+  }
+
+  function dragstarted(d) {
+    if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+  }
+  
+  function dragged(d) {
+    d.fx = d3.event.x;
+    d.fy = d3.event.y;
+  }
+  
+  function dragended(d) {
+    if (!d3.event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
   }
 
   initialize();
