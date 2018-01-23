@@ -66,6 +66,8 @@ svg {
     color = d3.scaleOrdinal(d3.schemeCategory10),
     nodes = [],
     links = [],
+    chain_node_ids = [],
+    chain_links = [],
     start_domain = get_query("domain", /^[0-9a-zA-Z\-\.]+\.[0-9a-zA-Z\-]+$/gi, "biwakodon.com"),
     start_domain_target_arr = [],
     chain_domain = "",
@@ -85,6 +87,7 @@ svg {
 
   function initialize() {
     domain = start_domain
+    chain_node_ids.push(domain)
     document.querySelector("#start-url").innerHTML = "基準インスタンス：<a href='https://"+encodeURIComponent(domain)+"/about/more' target='_blank'>"+encodeURIComponent(domain)+"</a>"
     d3.json("https://"+domain+"/api/v1/instance/peers", setup);
   }
@@ -92,48 +95,44 @@ svg {
   function setup(error, data) {
     if (error) throw error;
 
-    links = data.map((instance) => ({
+    links = data.filter(function(instance) {
+      for (var i=0; i< chain_links.length; i++) {
+        let source = typeof(chain_links[i].source) == 'string' ? chain_links[i].source : chain_links[i].source.id
+        let target = typeof(chain_links[i].target) == 'string' ? chain_links[i].target : chain_links[i].target.id
+        if (domain == source && instance == target || domain == target && instance == source) {
+          return false
+        }
+      }
+      return true
+    }).map((instance) => ({
       source: domain,
       target: instance
     }))
 
-    nodes = data.map((instance) => ({
+    nodes = data.filter(function(instance) {
+      return chain_node_ids.indexOf(instance) == -1
+    }).map((instance) => ({
       id: instance,
       group: 1,
-      value: 5,
-      label: ""
+      value: 5
     }))
-    nodes.some(function(v, i) {
-      if (v.id == start_domain) nodes.splice(i, 1)
-    })
 
-    if (chain_domain!="") {
+    chain_node_ids.forEach(function(instance) {
       nodes.push({
-        id: chain_domain,
+        id: instance,
         group: 2,
-        value: 8,
-        label: chain_domain
+        value: 8
       })
-    }
-    nodes.push({
-      id: start_domain,
-      group: 2,
-      value: 8,
-      label: start_domain
     })
 
-    if (start_domain_target_arr.length==0) {
-      start_domain_target_arr = links.map((_link) => ( _link.target ))
-    } else {
-      nodes.forEach(function(instance) {
-        if (start_domain_target_arr.indexOf(instance.id)>=0) {
-          links.push({
-            source: start_domain,
-            target: instance.id
-          })
-        }
+    chain_links.forEach(function(_link) {
+      let source = typeof(_link.source) == 'string' ? _link.source : _link.source.id
+      let target = typeof(_link.target) == 'string' ? _link.target : _link.target.id
+      links.push({
+        source: source,
+        target: target
       })
-    }
+    })
 
     // Apply the general update pattern to the nodes.
     node = node.data(nodes, (d) => ( d.id ))
@@ -172,6 +171,7 @@ svg {
   }
 
   function mouseover(d)  {
+    if (d.group!=1) return
     _domain = d.id
     httpRequest("https://"+_domain+"/api/v1/instance", "GET", {}, {},
       function(responseText) {
@@ -181,22 +181,28 @@ svg {
           if (check_version(versions, [2,1,2])) {
             d.group = 2
           } else {
-            d.group = 4
+            d.group = 3
           }
         }
-        d3.select(this).attr("fill", (d) => ( color(d.group) ))
+        d3.select(this).attr("fill", (d) => ( color(d.group) )).attr("r", (d) => ( d.value ))
       }.bind(this),
       function(status) {
-        d.group = 3
+        d.group = 4
         d3.select(this).attr("fill", (d) => ( color(d.group) ))
       }.bind(this)
     )    
   }
 
   function clicked(d) {
-    if (d.group == 2) {
+    if (d.group == 2 && d.value == 5) {
+      _domain = domain
       domain = d.id
       chain_domain = domain
+      chain_node_ids.push(domain)
+      chain_links.push({
+        source: _domain,
+        target: domain
+      })
       d.value = 8
       d3.select(this).attr("r", (d) => ( d.value ))
       document.querySelector("#target-url").innerHTML = "比較インスタンス：<a href='https://"+encodeURIComponent(domain)+"/about/more' target='_blank'>"+encodeURIComponent(domain)+"</a><p><a href='?domain="+encodeURIComponent(domain)+"' >基準インスタンスとして開き直す</a></p>"
