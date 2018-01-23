@@ -111,7 +111,7 @@ svg {
 
     if (check_domain != "") {
       d3.select("#"+check_domain.replace(/\./g, '-')).attr("r", 8)
-      document.querySelector("#target-url").innerHTML = "到着インスタンス：<a href='https://"+encodeURIComponent(check_domain)+"/about/more' target='_blank'>"+encodeURIComponent(check_domain)+"</a><p>　→<a href='?domain="+encodeURIComponent(check_domain)+"' >開始インスタンスとして開き直す</a></p>"
+      document.querySelector("#target-url").innerHTML = "到着インスタンス：<a href='https://"+encodeURIComponent(check_domain)+"/about/more' target='_blank'>"+encodeURIComponent(check_domain)+"</a><p>　→<a href='?domain="+encodeURIComponent(check_domain)+"' >開始インスタンスとして再スタート</a></p>"
       domain = check_domain
     }
 
