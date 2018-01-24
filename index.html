@@ -112,16 +112,21 @@ svg {
     if (check_domain != "") {
       d3.select("#"+check_domain.replace(/\./g, '-')).attr("r", 8)
       document.querySelector("#target-url").innerHTML = "到着インスタンス：<a href='https://"+encodeURIComponent(check_domain)+"/about/more' target='_blank'>"+encodeURIComponent(check_domain)+"</a><p>　→<a href='?domain="+encodeURIComponent(check_domain)+"' >開始インスタンスとして再スタート</a></p>"
+
+      before_domain = domain
       domain = check_domain
     }
 
-    chain_node_ids.push(domain)
-    if (before_domain!="") {
-      chain_node_links.push({
-        source: before_domain,
-        target: domain
-      })
-    } 
+    if (chain_node_ids.indexOf(domain) == -1) {
+      chain_node_ids.push(domain)
+
+      if (before_domain!="") {
+        chain_node_links.push({
+          source: before_domain,
+          target: domain
+        })
+      }
+    }
 
     nodes = data.filter(function(instance) {
       return chain_node_ids.indexOf(instance) == -1
@@ -148,6 +153,7 @@ svg {
 
     links = links.filter(function(_link) {
       for (chain_node in chain_node_target_arr) {
+        if (chain_node == domain) continue
         if (chain_node_target_arr[chain_node].indexOf(_link.target) >= 0) {
           return false
         }
@@ -157,6 +163,7 @@ svg {
 
     nodes = nodes.filter(function(instance) {
       for (chain_node in chain_node_target_arr) {
+        if (chain_node == domain) continue
         if (chain_node_target_arr[chain_node].indexOf(instance.id) >= 0) {
           return false
         }
@@ -164,17 +171,17 @@ svg {
       return true      
     })
 
-    chain_node_target_arr[domain] = links.map((_link) => (
-      _link.target
-    ))
-
+    if (typeof(chain_node_target_arr[domain]) == "undefined") {
+      chain_node_target_arr[domain] = links.map((_link) => (
+        _link.target
+      ))
+    }
 
     chain_node_ids.forEach(function(instance) {
       nodes.push({
         id: instance,
         group: 2,
-        value: 8,
-        label: instance
+        value: 8
       })
     })
 
@@ -185,6 +192,15 @@ svg {
       }
     })
 
+    chain_node_links.forEach(function(_link) {
+      let source = typeof(_link.source) == "string" ? _link.source : _link.source.id
+      let target = typeof(_link.target) == "string" ? _link.target : _link.target.id
+      links.push({
+        source: source,
+        target: target
+      })
+    })
+/*
     chain_node_ids.forEach(function(chain_node, index) {
       if (index>0) {
         links.push({
@@ -193,7 +209,7 @@ svg {
         })
       }
     })
-
+*/
     // Apply the general update pattern to the nodes.
     node = node.data(nodes, (d) => ( d.id ))
     node.exit().remove()
@@ -277,7 +293,7 @@ svg {
   }
 
   function clicked(d) {
-    if (d.group == 2 && d.value == 5) {
+    if (d.group == 2) {
       check_domain = d.id
       d3.json("https://"+check_domain+"/api/v1/instance/peers", setup);
     }
