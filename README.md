@@ -3,4 +3,4 @@ Mastodon v2.1.2から追加された /api/v1/instance/peers を使ってネッ�
 
 ## ToDo
 
-- ラベリング
+- 数字から始まるドメインの対応
