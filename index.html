@@ -15,8 +15,8 @@ svg {
 <svg width="960" height="600"></svg>
 <p>クリックしていく度に既知のインスタンスは省かれていきます。</p>
 <p id="onmounse-text">未選択</p>
-<p id="start-url"></p>
-<p id="target-url"></p>
+<p>経由インスタンス</p>
+<ul id="chain_nodes"></ul>
 <p>操作</p>
 <ul>
   <li>onMouse：GET /api/v1/instance （通信試行）</li>
@@ -98,7 +98,6 @@ svg {
 
   function initialize() {
     domain = start_domain
-    document.querySelector("#start-url").innerHTML = "開始インスタンス：<a href='https://"+encodeURIComponent(domain)+"/about/more' target='_blank'>"+encodeURIComponent(domain)+"</a>"
     d3.json("https://"+domain+"/api/v1/instance/peers", setup);
   }
 
@@ -111,7 +110,6 @@ svg {
 
     if (check_domain != "") {
       d3.select("#"+check_domain.replace(/\./g, '-')).attr("r", 8)
-      document.querySelector("#target-url").innerHTML = "到着インスタンス：<a href='https://"+encodeURIComponent(check_domain)+"/about/more' target='_blank'>"+encodeURIComponent(check_domain)+"</a><p>　→<a href='?domain="+encodeURIComponent(check_domain)+"' >開始インスタンスとして再スタート</a></p>"
 
       before_domain = domain
       domain = check_domain
@@ -177,12 +175,14 @@ svg {
       ))
     }
 
+    document.querySelector("#chain_nodes").innerHTML = "";
     chain_node_ids.forEach(function(instance) {
       nodes.push({
         id: instance,
         group: 2,
         value: 8
       })
+      document.querySelector("#chain_nodes").innerHTML += "<li><a href='https://"+encodeURIComponent(instance)+"/about/more' target='_blank'>"+encodeURIComponent(instance)+"</a></li>"
     })
 
     labels = []
@@ -200,16 +200,7 @@ svg {
         target: target
       })
     })
-/*
-    chain_node_ids.forEach(function(chain_node, index) {
-      if (index>0) {
-        links.push({
-          source: chain_node_ids[index-1],
-          target: chain_node
-        })
-      }
-    })
-*/
+
     // Apply the general update pattern to the nodes.
     node = node.data(nodes, (d) => ( d.id ))
     node.exit().remove()
