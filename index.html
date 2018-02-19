@@ -265,6 +265,11 @@ svg {
         } else {
           d.group = 3
         }
+        if (arr.title && arr.title.match(/[\u30a0-\u30ff\u3040-\u309f]+/) || arr.description && arr.description.match(/[\u30a0-\u30ff\u3040-\u309f]+/)) {
+          if (d.group==2) {
+            d3.select(this).attr("stroke", "#ff7f0e").attr("stroke-width", 3.0)
+          }
+        }
         d3.select(this).attr("fill", (d) => ( color(d.group) ))
       }.bind(this),
       function(status) {
