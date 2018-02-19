@@ -72,9 +72,11 @@ svg {
     width = +svg.attr("width"),
     height = +svg.attr("height"),
     color = d3.scaleOrdinal(d3.schemeCategory10),
+
     nodes = [],
     links = [],
     labels = [],
+
     chain_node_ids = [],
     chain_node_links = [],
     start_domain = get_query("domain", /^[0-9a-zA-Z\-\.]+\.[0-9a-zA-Z\-]+$/gi, "biwakodon.com"),
@@ -87,9 +89,6 @@ svg {
     .force("link", d3.forceLink().id((d) => ( d.id )))
     .force("charge", d3.forceManyBody().strength(-50))
     .force("center", d3.forceCenter(width / 2, height / 2))
-//    .force("x", d3.forceX())
-//    .force("y", d3.forceY())
-//    .alphaTarget(0)
   
   var g = svg.append("g"),
     link = g.append("g").attr("stroke", "#999").attr("stroke-width", 1.5).attr("class", "link").selectAll("line"),
@@ -104,13 +103,10 @@ svg {
   function setup(error, data) {
     if (error) {
       alert("情報の取得に失敗しました");
-      d3.select("#"+check_domain.replace(/\./g, '-')).attr("fill", color(4))
       return false;
     }
 
     if (check_domain != "") {
-      d3.select("#"+check_domain.replace(/\./g, '-')).attr("r", 8)
-
       before_domain = domain
       domain = check_domain
     }
